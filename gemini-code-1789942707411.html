@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Movie Quote Arcade - Action Edition</title>
+    
+    <!-- Dependencies -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Fredoka+One&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    
+    <!-- Custom Styles -->
+    <style>
+        body {
+            font-family: 'Fredoka One', cursive, sans-serif;
+            background-color: #0b0712;
+            color: #fff;
+            user-select: none;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        .font-arcade {
+            font-family: 'Press Start 2P', monospace;
+        }
+
+        /* CRT Screen Effect */
+        .crt-scanlines::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 40;
+            background-size: 100% 4px, 6px 100%;
+            pointer-events: none;
+        }
+
+        /* Buttons & Neon Effects */
+        .arcade-btn {
+            box-shadow: 0 6px 0 0 #000;
+            transition: all 0.1s ease;
+        }
+        .arcade-btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 0 #000;
+        }
+        .neon-glow-cyan { box-shadow: 0 0 15px rgba(6, 182, 212, 0.6); }
+        .neon-text-pink { text-shadow: 0 0 8px #ec4899, 0 0 16px #ec4899; }
+        .neon-text-yellow { text-shadow: 0 0 8px #eab308, 0 0 16px #eab308; }
+
+        /* Screen Shake Animation */
+        .shake { animation: shakeAnim 0.25s ease-in-out; }
+        @keyframes shakeAnim {
+            0% { transform: translate(0, 0); }
+            20% { transform: translate(-8px, 5px); }
+            40% { transform: translate(8px, -5px); }
+            60% { transform: translate(-5px, 3px); }
+            80% { transform: translate(5px, -3px); }
+            100% { transform: translate(0, 0); }
+        }
+    </style>
+</head>
+
+<body class="h-screen w-screen flex flex-col justify-between items-center relative crt-scanlines" id="main-body">
+
+    <!-- ================= TOP HUD ================= -->
+    <header class="w-full max-w-4xl px-4 py-2 flex justify-between items-center z-30 bg-slate-900/90 border-b-2 border-pink-500/50">
+        <div class="flex items-center space-x-2">
+            <span class="text-2xl cursor-pointer" onclick="showHub()">🕹️</span>
+            <div>
+                <h1 class="font-arcade text-xs text-pink-400 neon-text-pink">MOVIE ARCADE</h1>
+                <p class="font-arcade text-[9px] text-cyan-300">ILLUMINATION & POTTER QUEST</p>
+            </div>
+        </div>
+
+        <!-- Game Stats -->
+        <div id="game-hud" class="flex items-center space-x-4 font-arcade text-xs">
+            <div class="flex items-center space-x-1 text-rose-400">
+                <span>LIVES:</span>
+                <span id="hud-lives" class="text-rose-300">❤️❤️❤️</span>
+            </div>
+            <div class="text-yellow-400">
+                <span>SCORE:</span>
+                <span id="hud-score" class="text-yellow-200">0000</span>
+            </div>
+            <div class="text-cyan-400 hidden sm:block">
+                <span>COMBO:</span>
+                <span id="hud-combo" class="text-cyan-200">x1</span>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="flex space-x-2">
+            <button onclick="toggleAudio()" id="btn-audio" class="bg-slate-800 hover:bg-slate-700 text-sm p-1.5 rounded border border-slate-600">🔊</button>
+            <button onclick="showHub()" class="bg-slate-800 hover:bg-slate-700 text-xs font-arcade text-pink-400 p-1.5 rounded border border-pink-500">EXIT</button>
+        </div>
+    </header>
+
+    <!-- ================= TARGET PROMPT BANNER ================= -->
+    <div id="target-prompt-container" class="w-full max-w-3xl px-4 py-2 z-30 text-center">
+        <div id="prompt-box" class="bg-slate-900/95 border-2 border-cyan-400 rounded-xl p-2 sm:p-3 shadow-2xl flex flex-col items-center justify-center">
+            <div id="prompt-label" class="font-arcade text-[10px] text-cyan-300 uppercase">TARGET MISSION</div>
+            <div id="prompt-text" class="text-sm sm:text-base text-cyan-200 font-bold mt-1">Select a Level to Start Playing!</div>
+        </div>
+    </div>
+
+    <!-- ================= MAIN GAMEPLAY AREA ================= -->
+    <main class="relative flex-grow w-full max-w-4xl flex items-center justify-center p-2 z-20">
+        
+        <!-- Game Canvas -->
+        <canvas id="gameCanvas" class="w-full h-full max-h-[580px] bg-slate-950 rounded-2xl border-4 border-slate-800 shadow-2xl block"></canvas>
+
+        <!-- Funny Pop-up Banner -->
+        <div id="funny-popup" class="hidden absolute top-12 bg-gradient-to-r from-yellow-400 to-pink-500 text-slate-950 font-arcade text-xs sm:text-sm px-6 py-3 rounded-2xl border-4 border-slate-950 shadow-2xl transform -rotate-3 z-50 pointer-events-none transition-all">
+            <span id="popup-text">IT'S SO FLUFFY! 🦄</span>
+        </div>
+
+        <!-- Main Hub Menu -->
+        <div id="menu-overlay" class="absolute inset-0 bg-slate-950/95 z-40 rounded-2xl p-4 sm:p-6 flex flex-col justify-between items-center backdrop-blur-md">
+            <div class="text-center space-y-2 mt-2">
+                <h2 class="font-arcade text-lg sm:text-2xl text-yellow-400 neon-text-yellow">MOVIE VOCAB ARCADE</h2>
+                <p class="text-xs text-slate-300 max-w-md mx-auto">Zero pre-highlighted answers! Uniform color bubbles & targets across all levels!</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 w-full max-w-3xl my-auto">
+                <!-- Level 1 -->
+                <div onclick="startLevel(1)" class="bg-slate-900 hover:bg-slate-800 border-2 border-cyan-400 rounded-2xl p-4 flex flex-col justify-between cursor-pointer transition transform hover:-translate-y-1 shadow-lg group">
+                    <div class="space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="font-arcade text-[10px] bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded">LEVEL 1</span>
+                            <span class="text-xl">⚡</span>
+                        </div>
+                        <h3 class="font-arcade text-xs text-cyan-300 group-hover:text-cyan-200">BROOM CATCHER</h3>
+                        <p class="text-[11px] text-slate-300">Harry Potter basics! Fly your broom and catch falling snitch bubbles matching the definition!</p>
+                    </div>
+                    <button class="arcade-btn w-full mt-4 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-arcade text-[10px] py-2 rounded-xl font-bold">PLAY BROOM ⚡</button>
+                </div>
+
+                <!-- Level 2 -->
+                <div onclick="startLevel(2)" class="bg-slate-900 hover:bg-slate-800 border-2 border-pink-500 rounded-2xl p-4 flex flex-col justify-between cursor-pointer transition transform hover:-translate-y-1 shadow-lg group">
+                    <div class="space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="font-arcade text-[10px] bg-pink-500/20 text-pink-300 px-2 py-0.5 rounded">LEVEL 2</span>
+                            <span class="text-xl">💥</span>
+                        </div>
+                        <h3 class="font-arcade text-xs text-pink-400 group-hover:text-pink-300">CROSSOVER BLASTER</h3>
+                        <p class="text-[11px] text-slate-300">Potter + Minions quotes. Blast flying alien pods displaying the correct missing phrase!</p>
+                    </div>
+                    <button class="arcade-btn w-full mt-4 bg-pink-500 hover:bg-pink-400 text-slate-950 font-arcade text-[10px] py-2 rounded-xl font-bold">PLAY BLASTER 💥</button>
+                </div>
+
+                <!-- Level 3 -->
+                <div onclick="startLevel(3)" class="bg-slate-900 hover:bg-slate-800 border-2 border-yellow-400 rounded-2xl p-4 flex flex-col justify-between cursor-pointer transition transform hover:-translate-y-1 shadow-lg group">
+                    <div class="space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="font-arcade text-[10px] bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded">LEVEL 3</span>
+                            <span class="text-xl">🍌</span>
+                        </div>
+                        <h3 class="font-arcade text-xs text-yellow-400 group-hover:text-yellow-300">ILLUMINATION LAIR</h3>
+                        <p class="text-[11px] text-slate-300">Advanced Illumination slang & idioms! Collect matching keycards while dodging Gru's security bots!</p>
+                    </div>
+                    <button class="arcade-btn w-full mt-4 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-arcade text-[10px] py-2 rounded-xl font-bold">PLAY LAIR 🍌</button>
+                </div>
+            </div>
+
+            <!-- Leaderboard -->
+            <div class="w-full max-w-3xl bg-slate-900/80 p-3 rounded-xl border border-slate-800 flex justify-between items-center text-xs">
+                <div class="flex items-center space-x-2">
+                    <span class="text-yellow-400 font-arcade text-[10px]">HIGH SCORE:</span>
+                    <span id="hub-highscore" class="font-arcade text-cyan-300">0000</span>
+                </div>
+                <div class="text-slate-400 text-[11px]">Use Arrow Keys / WASD / On-Screen Touch Controls</div>
+            </div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="gameover-overlay" class="hidden absolute inset-0 bg-slate-950/95 z-40 rounded-2xl p-6 flex flex-col justify-center items-center text-center space-y-4 backdrop-blur-md">
+            <div class="text-5xl animate-bounce">💥</div>
+            <h2 id="gameover-title" class="font-arcade text-xl sm:text-3xl text-rose-500 neon-text-pink">GAME OVER</h2>
+            <p id="gameover-desc" class="text-xs text-slate-300">Watch out for distractors and villain bots! Try again!</p>
+            <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 font-arcade text-xs space-y-2">
+                <div class="text-slate-400">FINAL SCORE: <span id="final-score" class="text-yellow-400">0</span></div>
+                <div class="text-slate-400">RECORD HIGH: <span id="final-high" class="text-cyan-300">0</span></div>
+            </div>
+            <div class="flex space-x-3">
+                <button onclick="restartLevel()" class="arcade-btn bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-arcade text-xs px-6 py-3 rounded-xl font-bold">RETRY STAGE 🔄</button>
+                <button onclick="showHub()" class="arcade-btn bg-slate-800 hover:bg-slate-700 text-slate-200 font-arcade text-xs px-6 py-3 rounded-xl border border-slate-600">MAIN MENU 🏠</button>
+            </div>
+        </div>
+    </main>
+
+    <!-- ================= MOBILE CONTROLS ================= -->
+    <footer class="w-full max-w-4xl px-4 py-2 z-30 flex justify-between items-center">
+        <!-- D-Pad -->
+        <div class="flex space-x-2">
+            <button id="btn-left" class="arcade-btn bg-slate-800 active:bg-cyan-500 border-2 border-slate-700 active:border-cyan-300 w-11 h-11 rounded-xl flex items-center justify-center text-lg text-slate-200 select-none">◀</button>
+            <button id="btn-right" class="arcade-btn bg-slate-800 active:bg-cyan-500 border-2 border-slate-700 active:border-cyan-300 w-11 h-11 rounded-xl flex items-center justify-center text-lg text-slate-200 select-none">▶</button>
+            <button id="btn-up" class="arcade-btn bg-slate-800 active:bg-cyan-500 border-2 border-slate-700 active:border-cyan-300 w-11 h-11 rounded-xl flex items-center justify-center text-lg text-slate-200 select-none">▲</button>
+            <button id="btn-down" class="arcade-btn bg-slate-800 active:bg-cyan-500 border-2 border-slate-700 active:border-cyan-300 w-11 h-11 rounded-xl flex items-center justify-center text-lg text-slate-200 select-none">▼</button>
+        </div>
+
+        <div class="text-[10px] text-slate-400 font-arcade hidden sm:block">
+            KEYS: [WASD / ARROWS] Move | [SPACE] Fire Spell
+        </div>
+
+        <!-- Action Button -->
+        <div>
+            <button id="btn-action" class="arcade-btn bg-pink-500 active:bg-pink-400 border-2 border-pink-400 w-24 h-11 rounded-xl flex items-center justify-center text-xs font-arcade font-bold text-slate-950 shadow-lg select-none">SPELL 💥</button>
+        </div>
+    </footer>
+
+    <!-- ================= GAME LOGIC ================= -->
+    <script>
+        /* --- AUDIO SYNTHESIZER --- */
+        let audioCtx = null;
+        let isMuted = false;
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        function toggleAudio() {
+            isMuted = !isMuted;
+            document.getElementById('btn-audio').innerText = isMuted ? '🔇' : '🔊';
+        }
+
+        function playSFX(type) {
+            if (isMuted) return;
+            initAudio();
+            if (!audioCtx) return;
+
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            switch (type) {
+                case 'catch':
+                case 'correct':
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(440, now);
+                    osc.frequency.exponentialRampToValueAtTime(880, now + 0.15);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                    osc.start(now);
+                    osc.stop(now + 0.15);
+                    break;
+                case 'laser':
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(850, now);
+                    osc.frequency.exponentialRampToValueAtTime(180, now + 0.12);
+                    gain.gain.setValueAtTime(0.12, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+                    osc.start(now);
+                    osc.stop(now + 0.12);
+                    break;
+                case 'hit':
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(130, now);
+                    osc.frequency.linearRampToValueAtTime(40, now + 0.25);
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+                    osc.start(now);
+                    osc.stop(now + 0.25);
+                    break;
+                case 'win':
+                    [523, 659, 783, 1046].forEach((f, i) => {
+                        const o = audioCtx.createOscillator();
+                        const g = audioCtx.createGain();
+                        o.connect(g); o.connect(audioCtx.destination);
+                        o.frequency.value = f;
+                        g.gain.setValueAtTime(0.15, now + i*0.08);
+                        g.gain.exponentialRampToValueAtTime(0.001, now + i*0.08 + 0.25);
+                        o.start(now + i*0.08); o.stop(now + i*0.08 + 0.25);
+                    });
+                    break;
+            }
+        }
+
+        /* --- VOCABULARY DATASET --- */
+                const MOVIE_DATASET = {
+            1: [ // Level 1: Harry Potter & Basic Magic Words (25 Unique Items)
+                { prompt: "DEFINITION: To float in the air", correct: "levitate", wrong: ["swear", "trust", "mention"] },
+                { prompt: "HARRY POTTER: A magician / magic user", correct: "wizard", wrong: ["troll", "centaur", "celebrity"] },
+                { prompt: "DEFINITION: Mark left on skin after an injury", correct: "scar", wrong: ["cloak", "broom", "feast"] },
+                { prompt: "HARRY POTTER: Forbidden area to students", correct: "out of bounds", wrong: ["detention", "rumour", "belongings"] },
+                { prompt: "DEFINITION: To do some magic", correct: "cast a spell", wrong: ["let in", "be awarded", "better off"] },
+                { prompt: "DEFINITION: A large celebratory meal", correct: "feast", wrong: ["diversion", "century", "cloak"] },
+                { prompt: "HARRY POTTER: A non-magical person", correct: "muggle", wrong: ["squib", "elf", "goblin"] },
+                { prompt: "HARRY POTTER: A magical liquid", correct: "potion", wrong: ["poison", "broth", "soup"] },
+                { prompt: "HARRY POTTER: A stick used for magic", correct: "wand", wrong: ["twig", "branch", "staff"] },
+                { prompt: "HARRY POTTER: The golden flying ball", correct: "snitch", wrong: ["quaffle", "bludger", "orb"] },
+                { prompt: "HARRY POTTER: A large black pot", correct: "cauldron", wrong: ["kettle", "bowl", "mug"] },
+                { prompt: "HARRY POTTER: A magical protector", correct: "patronus", wrong: ["shield", "guard", "ward"] },
+                { prompt: "DEFINITION: A secret word to enter", correct: "password", wrong: ["riddle", "code", "key"] },
+                { prompt: "HARRY POTTER: A magical beast that guards Gringotts", correct: "dragon", wrong: ["griffin", "sphinx", "troll"] },
+                { prompt: "HARRY POTTER: A person who transforms into an animal", correct: "animagus", wrong: ["shifter", "mutant", "werewolf"] },
+                { prompt: "DEFINITION: A dark magical creature that sucks happiness", correct: "dementor", wrong: ["ghost", "ghoul", "wraith"] },
+                { prompt: "HARRY POTTER: Gold wizarding coin", correct: "galleon", wrong: ["sickle", "knut", "penny"] },
+                { prompt: "DEFINITION: To sneak around quietly", correct: "skulk", wrong: ["march", "stomp", "run"] },
+                { prompt: "HARRY POTTER: A magical map feature", correct: "footprints", wrong: ["ink", "lines", "dots"] },
+                { prompt: "HARRY POTTER: Flying vehicle", correct: "broomstick", wrong: ["carpet", "car", "bike"] },
+                { prompt: "DEFINITION: A piece of clothing worn by wizards", correct: "robes", wrong: ["suit", "dress", "coat"] },
+                { prompt: "HARRY POTTER: A yelling letter", correct: "howler", wrong: ["shouter", "screamer", "crier"] },
+                { prompt: "HARRY POTTER: A magical teleporting object", correct: "portkey", wrong: ["door", "gate", "ring"] },
+                { prompt: "DEFINITION: To mix liquids together", correct: "brew", wrong: ["bake", "fry", "roast"] },
+                { prompt: "HARRY POTTER: The shape-shifting fear creature", correct: "boggart", wrong: ["poltergeist", "demon", "spirit"] }
+            ],
+            2: [ // Level 2: Potter + Minions/Pets Crossover (25 Unique Items)
+                { prompt: "COMPLETE QUOTE: Strictly speaking I'm not allowed to do ____.", correct: "magic", wrong: ["troll", "feast", "detention"] },
+                { prompt: "ILLUMINATION: To calm down and relax", correct: "chillax", wrong: ["steamroll", "commode", "buns"] },
+                { prompt: "DEFINITION: A distraction used to fool someone", correct: "a diversion", wrong: ["a rumour", "a cloak", "a scar"] },
+                { prompt: "ILLUMINATION: To be patient and wait", correct: "hold your horses", wrong: ["krumping", "boo-boo", "bonkers"] },
+                { prompt: "DESPICABLE ME 2: An energetic style of hip-hop dance", correct: "krumping", wrong: ["singe", "gourd", "munchkin"] },
+                { prompt: "MINIONS: Dye designs on cloth by tightly tying it", correct: "tie-dye", wrong: ["gizmo", "go-go boot", "jaunt"] },
+                { prompt: "DESPICABLE ME: Extremely bad or villainous", correct: "despicable", wrong: ["friendly", "nice", "kind"] },
+                { prompt: "COMPLETE QUOTE: It's so ____! I'm gonna die!", correct: "fluffy", wrong: ["soft", "cute", "sweet"] },
+                { prompt: "DESPICABLE ME: A weapon that makes things small", correct: "shrink ray", wrong: ["laser", "blaster", "gun"] },
+                { prompt: "MINIONS: A yellow henchman", correct: "minion", wrong: ["servant", "worker", "helper"] },
+                { prompt: "DESPICABLE ME: Gru's favorite weapon to freeze people", correct: "freeze ray", wrong: ["ice beam", "snow gun", "cold laser"] },
+                { prompt: "DEFINITION: A magical cure or solution", correct: "remedy", wrong: ["poison", "curse", "hex"] },
+                { prompt: "SECRET LIFE OF PETS: A small, white, fluffy dog", correct: "pomeranian", wrong: ["poodle", "pug", "terrier"] },
+                { prompt: "ILLUMINATION: Someone who steals the moon", correct: "villain", wrong: ["hero", "thief", "cop"] },
+                { prompt: "POTTER: A slightly bad spell", correct: "jinx", wrong: ["curse", "charm", "hex"] },
+                { prompt: "MINIONS: Their favorite yellow fruit", correct: "banana", wrong: ["apple", "grape", "pear"] },
+                { prompt: "ILLUMINATION: To trick or fool someone", correct: "bamboozle", wrong: ["help", "guide", "lead"] },
+                { prompt: "POTTER: A helpful piece of magic", correct: "charm", wrong: ["curse", "jinx", "hex"] },
+                { prompt: "DESPICABLE ME: Dr. Nefario's vehicle choice", correct: "scooter", wrong: ["car", "bike", "van"] },
+                { prompt: "DEFINITION: A person who sees the future", correct: "seer", wrong: ["wizard", "witch", "muggle"] },
+                { prompt: "SECRET LIFE OF PETS: An animal doctor", correct: "vet", wrong: ["chef", "cop", "teacher"] },
+                { prompt: "DESPICABLE ME: Sweet fruit spread", correct: "jelly", wrong: ["jam", "butter", "honey"] },
+                { prompt: "POTTER: The darkest type of magic", correct: "curse", wrong: ["hex", "jinx", "charm"] },
+                { prompt: "ILLUMINATION: A crazy or wild idea", correct: "bonkers", wrong: ["smart", "clever", "genius"] },
+                { prompt: "DESPICABLE ME: Floating without falling", correct: "anti-gravity", wrong: ["flying", "jumping", "falling"] }
+            ],
+            3: [ // Level 3: Advanced Slang & Vocabulary (25 Unique Items)
+                { prompt: "MINIONS / GRU: Courage combined with inventiveness", correct: "Moxie", wrong: ["Flapdoodle", "Poindexter", "Tchotchke"] },
+                { prompt: "SECRET LIFE OF PETS 2: Silly talk or complete nonsense", correct: "Flapdoodle", wrong: ["Schnitzel", "Washboard", "Groggy"] },
+                { prompt: "DESPICABLE ME 4: A remarkable or excellent thing", correct: "Doozy", wrong: ["Tomfoolery", "Sourpuss", "Pipsqueak"] },
+                { prompt: "DESPICABLE ME 4: Silly or foolish behavior", correct: "Tomfoolery", wrong: ["Moxie", "Washboard", "Honcho"] },
+                { prompt: "MINIONS THE RISE OF GRU: A bookish or socially unskilled person", correct: "Poindexter", wrong: ["Honcho", "Gamy", "Skedaddle"] },
+                { prompt: "MINIONS THE RISE OF GRU: Somebody who dominates a project or leads", correct: "Honcho", wrong: ["Tchotchke", "Sourpuss", "Flapdoodle"] },
+                { prompt: "MINIONS THE RISE OF GRU: A trinket or decorative ornament", correct: "Tchotchke", wrong: ["Doozy", "Schnitzel", "Tomfoolery"] },
+                { prompt: "SECRET LIFE OF PETS: Feeling weak, dizzy, or unsteady", correct: "Groggy", wrong: ["Washboard", "Moxie", "Pipsqueak"] },
+                { prompt: "SECRET LIFE OF PETS: Flat stomach with well-defined muscles", correct: "Washboard", wrong: ["Sourpuss", "Gamy", "Skedaddle"] },
+                { prompt: "DESPICABLE ME 4: Somebody regarded as gloomy or bad-tempered", correct: "Sourpuss", wrong: ["Poindexter", "Honcho", "Tchotchke"] },
+                { prompt: "SECRET LIFE OF PETS: To run away or depart quickly", correct: "Skedaddle", wrong: ["Flapdoodle", "Doozy", "Tomfoolery"] },
+                { prompt: "SECRET LIFE OF PETS: Having a strong flavor like wild game", correct: "Gamy", wrong: ["Schnitzel", "Washboard", "Moxie"] },
+                { prompt: "DEFINITION: Secret or dishonest behavior", correct: "Skullduggery", wrong: ["Honesty", "Truth", "Clarity"] },
+                { prompt: "DEFINITION: A lot of fuss or commotion", correct: "Hullabaloo", wrong: ["Silence", "Peace", "Quiet"] },
+                { prompt: "DEFINITION: Mischievous or playful activity", correct: "Shenanigans", wrong: ["Work", "Chores", "Duties"] },
+                { prompt: "DEFINITION: Language that is meaningless or hard to understand", correct: "Gobbledygook", wrong: ["Poetry", "Prose", "Fact"] },
+                { prompt: "DEFINITION: Nonsense or rubbish", correct: "Malarkey", wrong: ["Truth", "Logic", "Sense"] },
+                { prompt: "DEFINITION: A foolish or stupid person", correct: "Nincompoop", wrong: ["Genius", "Scholar", "Expert"] },
+                { prompt: "DEFINITION: Empty talk or nonsense", correct: "Poppycock", wrong: ["Wisdom", "Advice", "Help"] },
+                { prompt: "DEFINITION: To spend time aimlessly", correct: "Lollygag", wrong: ["Rush", "Hurry", "Sprint"] },
+                { prompt: "DEFINITION: Crooked, askew, or awry", correct: "Cattywampus", wrong: ["Straight", "Level", "Even"] },
+                { prompt: "DEFINITION: A noisy and overexcited reaction", correct: "Brouhaha", wrong: ["Calm", "Order", "Peace"] },
+                { prompt: "DEFINITION: A commotion or fuss, especially caused by conflicting views", correct: "Kerfuffle", wrong: ["Agreement", "Harmony", "Truce"] },
+                { prompt: "DEFINITION: Nonsense (British origin)", correct: "Codswallop", wrong: ["Fact", "Truth", "Reality"] },
+                { prompt: "DEFINITION: Senseless talk or writing", correct: "Balderdash", wrong: ["Sense", "Reason", "Logic"] }
+            ]
+        };
+
+        const MOVIE_POPUPS = [
+            "IT'S SO FLUFFY! 🦄", "BANANA! 🍌", "YOU'RE A WIZARD! ⚡", 
+            "DESPICABLE! 🦹", "MAMMA MIA! 🍄", "MINION POWER! 💛", "10 POINTS! 🏆"
+        ];
+
+        /* --- GAME ENGINE & STATE --- */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let currentLevel = 1;
+        let score = 0;
+        let highscore = parseInt(localStorage.getItem('mq_high') || '0');
+        let lives = 3;
+        let combo = 1;
+        let gameActive = false;
+        let missionIdx = 0;
+
+        let particles = [];
+        let fallingItems = [];
+        let lasers = [];
+        let invaders = [];
+        let mazeGems = [];
+        let mazeMonsters = [];
+        
+        let player = { x: 0, y: 0, w: 60, h: 40, speed: 7 };
+        const keys = { left: false, right: false, up: false, down: false, fire: false };
+
+        // Resize Canvas
+        function resizeCanvas() {
+            canvas.width = canvas.clientWidth;
+            canvas.height = canvas.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        /* --- CONTROLS & EFFECTS --- */
+        function triggerShake() {
+            const body = document.getElementById('main-body');
+            body.classList.add('shake');
+            setTimeout(() => body.classList.remove('shake'), 250);
+        }
+
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 20; i++) {
+                particles.push({
+                    x: x, y: y,
+                    vx: (Math.random() - 0.5) * 9,
+                    vy: (Math.random() - 0.5) * 9,
+                    color: color,
+                    life: 1.0,
+                    size: Math.random() * 5 + 3
+                });
+            }
+        }
+
+        function triggerFunnyPopup(text) {
+            const pop = document.getElementById('funny-popup');
+            document.getElementById('popup-text').innerText = text || MOVIE_POPUPS[Math.floor(Math.random() * MOVIE_POPUPS.length)];
+            pop.classList.remove('hidden');
+            setTimeout(() => pop.classList.add('hidden'), 1200);
+        }
+
+        // Keyboard Controls
+        window.addEventListener('keydown', e => {
+            if (['ArrowLeft', 'a', 'A'].includes(e.key)) keys.left = true;
+            if (['ArrowRight', 'd', 'D'].includes(e.key)) keys.right = true;
+            if (['ArrowUp', 'w', 'W'].includes(e.key)) keys.up = true;
+            if (['ArrowDown', 's', 'S'].includes(e.key)) keys.down = true;
+            if ([' ', 'Enter'].includes(e.key)) keys.fire = true;
+        });
+
+        window.addEventListener('keyup', e => {
+            if (['ArrowLeft', 'a', 'A'].includes(e.key)) keys.left = false;
+            if (['ArrowRight', 'd', 'D'].includes(e.key)) keys.right = false;
+            if (['ArrowUp', 'w', 'W'].includes(e.key)) keys.up = false;
+            if (['ArrowDown', 's', 'S'].includes(e.key)) keys.down = false;
+            if ([' ', 'Enter'].includes(e.key)) keys.fire = false;
+        });
+
+        // Touch Controls
+        const bindTouch = (id, keyName) => {
+            const btn = document.getElementById(id);
+            btn.addEventListener('touchstart', (e) => { e.preventDefault(); keys[keyName] = true; });
+            btn.addEventListener('touchend', (e) => { e.preventDefault(); keys[keyName] = false; });
+            btn.addEventListener('mousedown', () => { keys[keyName] = true; });
+            btn.addEventListener('mouseup', () => { keys[keyName] = false; });
+        };
+        bindTouch('btn-left', 'left');
+        bindTouch('btn-right', 'right');
+        bindTouch('btn-up', 'up');
+        bindTouch('btn-down', 'down');
+        bindTouch('btn-action', 'fire');
+
+        /* --- GAME FLOW --- */
+        function updateHUD() {
+            document.getElementById('hud-score').innerText = String(score).padStart(4, '0');
+            document.getElementById('hud-lives').innerText = '❤️'.repeat(Math.max(0, lives));
+            document.getElementById('hud-combo').innerText = `x${combo}`;
+            document.getElementById('hub-highscore').innerText = String(highscore).padStart(4, '0');
+        }
+
+        function showHub() {
+            gameActive = false;
+            document.getElementById('menu-overlay').classList.remove('hidden');
+            document.getElementById('gameover-overlay').classList.add('hidden');
+            document.getElementById('prompt-text').innerText = "Select an Arcade Level to Start Playing!";
+            updateHUD();
+        }
+
+        function startLevel(lvl) {
+            currentLevel = lvl;
+            score = 0;
+            lives = 3;
+            combo = 1;
+            missionIdx = 0;
+            gameActive = true;
+
+            document.getElementById('menu-overlay').classList.add('hidden');
+            document.getElementById('gameover-overlay').classList.add('hidden');
+
+            updateHUD();
+            initMission();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function restartLevel() {
+            startLevel(currentLevel);
+        }
+
+        function gameOver() {
+            gameActive = false;
+            playSFX('hit');
+            triggerShake();
+            
+            if (score > highscore) {
+                highscore = score;
+                localStorage.setItem('mq_high', highscore);
+            }
+            
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('final-high').innerText = highscore;
+            document.getElementById('gameover-overlay').classList.remove('hidden');
+        }
+
+        function initMission() {
+            const data = MOVIE_DATASET[currentLevel];
+            if (missionIdx >= data.length) missionIdx = 0;
+            const item = data[missionIdx];
+
+            // Reset Level Arrays
+            fallingItems = [];
+            lasers = [];
+            invaders = [];
+            mazeGems = [];
+            mazeMonsters = [];
+
+            const words = [item.correct, ...item.wrong].sort(() => Math.random() - 0.5);
+
+            if (currentLevel === 1) {
+                // LEVEL 1: BROOM CATCHER
+                document.getElementById('prompt-label').innerText = "LEVEL 1 MISSION: CATCH MATCHING TERM";
+                document.getElementById('prompt-text').innerText = item.prompt;
+
+                player.w = 70; player.h = 45;
+                player.x = canvas.width / 2 - player.w / 2;
+                player.y = canvas.height - 60;
+
+                words.forEach((w, i) => {
+                    fallingItems.push({
+                        text: w,
+                        isTarget: (w === item.correct),
+                        x: 60 + i * ((canvas.width - 120) / (words.length - 1)),
+                        y: -40 - Math.random() * 120,
+                        speed: 1.8 + Math.random() * 1.2,
+                        r: 34,
+                        hitColor: null 
+                    });
+                });
+
+            } else if (currentLevel === 2) {
+                // LEVEL 2: CROSSOVER BLASTER
+                document.getElementById('prompt-label').innerText = "LEVEL 2 MISSION: BLAST MATCHING POD";
+                document.getElementById('prompt-text').innerText = item.prompt;
+
+                player.w = 40; player.h = 50;
+                player.x = canvas.width / 2 - player.w / 2;
+                player.y = canvas.height - 60;
+
+                words.forEach((w, i) => {
+                    invaders.push({
+                        text: w,
+                        isTarget: (w === item.correct),
+                        x: 60 + i * ((canvas.width - 120) / (words.length - 1)),
+                        y: 50 + (i % 2) * 20,
+                        w: 90, h: 42,
+                        vx: 1.5,
+                        hitColor: null
+                    });
+                });
+
+            } else if (currentLevel === 3) {
+                // LEVEL 3: ILLUMINATION LAIR
+                document.getElementById('prompt-label').innerText = "LEVEL 3 MISSION: ILLUMINATION LAIR KEYCARD";
+                document.getElementById('prompt-text').innerText = item.prompt;
+
+                // Safe spawn position (away from top-left corner items)
+                player.w = 32; player.h = 32;
+                player.x = 60; player.y = 80;
+
+                words.forEach((word, i) => {
+                    mazeGems.push({
+                        text: word,
+                        isTarget: (word === item.correct),
+                        x: 180 + (i * 150) % (canvas.width - 220),
+                        y: 140 + (i * 100) % (canvas.height - 200),
+                        r: 30,
+                        hitColor: null
+                    });
+                });
+
+                mazeMonsters = [
+                    { x: canvas.width / 2, y: canvas.height / 2, vx: 2.5, vy: 0, r: 22 },
+                    { x: canvas.width - 100, y: 160, vx: 0, vy: 2.5, r: 22 }
+                ];
+            }
+            
+        }
+
+        /* --- RENDER LOOPS --- */
+        function gameLoop() {
+            if (!gameActive) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Particles Render
+            particles.forEach((p, index) => {
+                p.x += p.vx; p.y += p.vy;
+                p.life -= 0.03;
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = Math.max(0, p.life);
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+                
+                if (p.life <= 0) particles.splice(index, 1);
+            });
+
+            if (currentLevel === 1) updateCatcher();
+            else if (currentLevel === 2) updateDefender();
+            else if (currentLevel === 3) updateMaze();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // --- LEVEL 1: BROOM CATCHER ---
+        function updateCatcher() {
+            if (keys.left && player.x > 0) player.x -= player.speed;
+            if (keys.right && player.x + player.w < canvas.width) player.x += player.speed;
+
+            // Draw Broom
+            ctx.fillStyle = '#ec4899';
+            ctx.beginPath();
+            ctx.arc(player.x + player.w/2, player.y + player.h/2, player.w/2, 0, Math.PI);
+            ctx.fill();
+            
+            ctx.fillStyle = '#06b6d4';
+            ctx.fillRect(player.x + 5, player.y + 5, player.w - 10, 8);
+
+            // Draw Bubbles
+            fallingItems.forEach((b) => {
+                b.y += b.speed;
+
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
+                ctx.fillStyle = b.hitColor || 'rgba(6, 182, 212, 0.85)';
+                ctx.fill();
+                ctx.strokeStyle = '#38bdf8';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.fillStyle = '#fff';
+                ctx.font = '11px "Fredoka One"';
+                ctx.textAlign = 'center';
+                ctx.fillText(b.text, b.x, b.y + 4);
+
+                // Collision
+                if (b.y + b.r >= player.y && b.x >= player.x - 10 && b.x <= player.x + player.w + 10) {
+                    if (b.isTarget) {
+                        b.hitColor = '#eab308';
+                        createExplosion(b.x, b.y, '#eab308');
+                        playSFX('catch');
+                        score += 150 * combo;
+                        combo++;
+                        triggerFunnyPopup();
+                        missionIdx++;
+                        setTimeout(initMission, 300);
+                    } else {
+                        createExplosion(b.x, b.y, '#ef4444');
+                        playSFX('hit');
+                        triggerShake();
+                        lives--;
+                        combo = 1;
+                        updateHUD();
+                        if (lives <= 0) gameOver();
+                        else b.y = -50;
+                    }
+                }
+
+                if (b.y > canvas.height + 40) {
+                    b.y = -40;
+                    b.x = Math.random() * (canvas.width - 80) + 40;
+                }
+            });
+        }
+
+        // --- LEVEL 2: CROSSOVER BLASTER ---
+        function updateDefender() {
+            if (keys.left && player.x > 0) player.x -= player.speed;
+            if (keys.right && player.x + player.w < canvas.width) player.x += player.speed;
+
+            if (keys.fire) {
+                if (!player.lastFire || Date.now() - player.lastFire > 220) {
+                    playSFX('laser');
+                    lasers.push({ x: player.x + player.w/2, y: player.y, speed: 10 });
+                    player.lastFire = Date.now();
+                }
+            }
+
+            // Draw Laser Wand
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillRect(player.x + player.w/2 - 4, player.y, 8, player.h);
+
+            // Update Lasers
+            lasers.forEach((l, li) => {
+                l.y -= l.speed;
+                ctx.fillStyle = '#ec4899';
+                ctx.fillRect(l.x - 3, l.y, 6, 14);
+
+                invaders.forEach((inv) => {
+                    if (l.x >= inv.x - inv.w/2 && l.x <= inv.x + inv.w/2 && l.y <= inv.y + inv.h && l.y >= inv.y) {
+                        lasers.splice(li, 1);
+                        if (inv.isTarget) {
+                            inv.hitColor = '#eab308';
+                            createExplosion(inv.x, inv.y + inv.h/2, '#eab308');
+                            playSFX('catch');
+                            score += 200 * combo;
+                            combo++;
+                            triggerFunnyPopup();
+                            missionIdx++;
+                            setTimeout(initMission, 350);
+                        } else {
+                            createExplosion(inv.x, inv.y + inv.h/2, '#ef4444');
+                            playSFX('hit');
+                            triggerShake();
+                            lives--;
+                            combo = 1;
+                            updateHUD();
+                            if (lives <= 0) gameOver();
+                        }
+                    }
+                });
+            });
+
+            // Draw Flying Invader Pods
+            invaders.forEach(inv => {
+                inv.x += inv.vx;
+                if (inv.x > canvas.width - 60 || inv.x < 60) inv.vx *= -1;
+
+                ctx.fillStyle = inv.hitColor || 'rgba(168, 85, 247, 0.9)';
+                ctx.fillRect(inv.x - inv.w/2, inv.y, inv.w, inv.h);
+                
+                ctx.strokeStyle = '#c084fc';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(inv.x - inv.w/2, inv.y, inv.w, inv.h);
+
+                ctx.fillStyle = '#fff';
+                ctx.font = '11px "Fredoka One"';
+                ctx.textAlign = 'center';
+                ctx.fillText(inv.text, inv.x, inv.y + 25);
+            });
+        }
+
+        // --- LEVEL 3: ILLUMINATION LAIR ---
+        function updateMaze() {
+            if (keys.left && player.x > 0) player.x -= player.speed;
+            if (keys.right && player.x + player.w < canvas.width) player.x += player.speed;
+            if (keys.up && player.y > 0) player.y -= player.speed;
+            if (keys.down && player.y + player.h < canvas.height) player.y += player.speed;
+
+            // Draw Minion
+            ctx.fillStyle = '#eab308';
+            ctx.beginPath();
+            ctx.arc(player.x + 16, player.y + 16, 16, 0, Math.PI*2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#1e3a8a';
+            ctx.fillRect(player.x + 4, player.y + 18, 24, 12);
+
+            // Render Lair Orbs
+            mazeGems.forEach(gem => {
+                ctx.beginPath();
+                ctx.arc(gem.x, gem.y, gem.r, 0, Math.PI*2);
+                ctx.fillStyle = gem.hitColor || 'rgba(14, 116, 144, 0.9)';
+                ctx.fill();
+                
+                ctx.strokeStyle = '#22d3ee';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.fillStyle = '#fff';
+                ctx.font = '10px "Fredoka One"';
+                ctx.textAlign = 'center';
+                ctx.fillText(gem.text, gem.x, gem.y + 4);
+
+                // Collision with Minion
+                const dist = Math.hypot((player.x + 16) - gem.x, (player.y + 16) - gem.y);
+                if (dist < gem.r + 16) {
+                    if (gem.isTarget) {
+                        gem.hitColor = '#eab308';
+                        createExplosion(gem.x, gem.y, '#eab308');
+                        playSFX('catch');
+                        score += 250 * combo;
+                        combo++;
+                        triggerFunnyPopup("BANANA! 🍌");
+                        missionIdx++;
+                        setTimeout(initMission, 350);
+                    } else {
+                        createExplosion(gem.x, gem.y, '#ef4444');
+                        playSFX('hit');
+                        triggerShake();
+                        lives--;
+                        combo = 1;
+                        player.x = 40; player.y = 40;
+                        updateHUD();
+                        if (lives <= 0) gameOver();
+                    }
+                }
+            });
+
+            // Render Patrolling Bots
+            mazeMonsters.forEach(m => {
+                m.x += m.vx; m.y += m.vy;
+                if (m.x < 30 || m.x > canvas.width - 30) m.vx *= -1;
+                if (m.y < 30 || m.y > canvas.height - 30) m.vy *= -1;
+
+                ctx.fillStyle = '#f43f5e';
+                ctx.beginPath();
+                ctx.arc(m.x, m.y, m.r, 0, Math.PI*2);
+                ctx.fill();
+
+                const dist = Math.hypot((player.x + 16) - m.x, (player.y + 16) - m.y);
+                if (dist < m.r + 16) {
+                    playSFX('hit');
+                    triggerShake();
+                    lives--;
+                    player.x = 40; player.y = 40;
+                    updateHUD();
+                    if (lives <= 0) gameOver();
+                }
+            });
+        }
+
+        // Initialize HUD on load
+        updateHUD();
+    </script>
+</body>
+</html>
